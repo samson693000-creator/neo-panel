@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-matrix-bg text-matrix-green font-mono antialiased;
+  background-image:
+    linear-gradient(rgba(0, 255, 156, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 156, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+::selection {
+  background: rgba(0, 255, 156, 0.3);
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: #04070a;
+}
+::-webkit-scrollbar-thumb {
+  background: #1d4d33;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00c97b;
+}
+
+@layer components {
+  .panel {
+    @apply bg-matrix-panel/85 border border-matrix-border rounded-lg backdrop-blur-sm shadow-neon;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md border text-sm
+      font-medium transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn border-matrix-green/60 bg-matrix-green/10 text-matrix-green
+      hover:bg-matrix-green/20 hover:shadow-neon;
+  }
+  .btn-ghost {
+    @apply btn border-matrix-border text-matrix-dim hover:text-matrix-green
+      hover:border-matrix-green/50;
+  }
+  .btn-danger {
+    @apply btn border-matrix-red/50 bg-matrix-red/10 text-matrix-red hover:bg-matrix-red/20;
+  }
+
+  .input {
+    @apply w-full bg-black/50 border border-matrix-border rounded-md px-3 py-2 text-sm
+      text-matrix-green placeholder:text-matrix-dim/60
+      focus:outline-none focus:border-matrix-green focus:ring-1 focus:ring-matrix-green/40;
+  }
+  .label {
+    @apply block text-xs uppercase tracking-widest text-matrix-dim mb-1.5;
+  }
+
+  .table-wrap {
+    @apply overflow-x-auto rounded-lg border border-matrix-border;
+  }
+  .tbl {
+    @apply w-full text-sm min-w-[720px];
+  }
+  .tbl th {
+    @apply text-left px-4 py-3 text-[11px] uppercase tracking-widest text-matrix-dim
+      bg-black/40 border-b border-matrix-border whitespace-nowrap;
+  }
+  .tbl td {
+    @apply px-4 py-3 border-b border-matrix-border/40 align-middle;
+  }
+  .tbl tbody tr:hover {
+    @apply bg-matrix-green/5;
+  }
+
+  .badge {
+    @apply inline-block px-2 py-0.5 rounded text-[11px] border;
+  }
+  .badge-ok {
+    @apply badge border-matrix-green/50 text-matrix-green bg-matrix-green/10;
+  }
+  .badge-off {
+    @apply badge border-matrix-red/50 text-matrix-red bg-matrix-red/10;
+  }
+  .badge-warn {
+    @apply badge border-matrix-amber/50 text-matrix-amber bg-matrix-amber/10;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-matrix-dim
+      border border-transparent transition-all hover:text-matrix-green
+      hover:bg-matrix-green/5 hover:border-matrix-border;
+  }
+  .nav-item-active {
+    @apply text-matrix-green bg-matrix-green/10 border-matrix-green/40 shadow-neon;
+  }
+}

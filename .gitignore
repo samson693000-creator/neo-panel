@@ -1,0 +1,17 @@
+.env
+.env.local
+.kiro/
+*.log
+backups/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+dist/
+.DS_Store
+.idea/
+.vscode/
+caddy_data/
+data/
+credentials.txt
