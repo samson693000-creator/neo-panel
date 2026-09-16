@@ -7,6 +7,7 @@ import io
 import os
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -42,7 +43,7 @@ def die(message: str, code: int = 1) -> None:
     raise SystemExit(code)
 
 
-def run(cmd: list[str], cwd: Path | None = None) -> None:
+def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> int:
     print(">", " ".join(cmd))
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
@@ -55,14 +56,114 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
         encoding="utf-8",
         errors="replace",
     )
-    if result.returncode != 0:
+    if check and result.returncode != 0:
         die(f"команда завершилась с кодом {result.returncode}: {' '.join(cmd)}")
+    return result.returncode
+
+
+def is_root() -> bool:
+    return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def apt_cmd(args: list[str]) -> list[str]:
+    apt = shutil.which("apt-get")
+    if not apt:
+        die(
+            "На этом сервере нет python3-venv. Установи вручную:\n"
+            "  sudo apt-get update && sudo apt-get install -y python3-venv python3-pip"
+        )
+    prefix: list[str] = []
+    if not is_root():
+        sudo = shutil.which("sudo")
+        if not sudo:
+            die(
+                "Нужны права root. Выполни:\n"
+                "  sudo apt-get update && sudo apt-get install -y python3-venv python3-pip\n"
+                "  rm -rf .venv && python3 install.py"
+            )
+        prefix = [sudo]
+    return prefix + [apt] + args
+
+
+def install_apt_packages(packages: list[str]) -> None:
+    print("Ставлю системные пакеты:", ", ".join(packages))
+    run(apt_cmd(["update", "-y"]))
+    run(apt_cmd(["install", "-y", *packages]))
 
 
 def venv_python() -> Path:
     if os.name == "nt":
         return VENV / "Scripts" / "python.exe"
     return VENV / "bin" / "python"
+
+
+def venv_ready() -> bool:
+    py = venv_python()
+    if not py.is_file():
+        return False
+    probe = subprocess.run(
+        [str(py), "-c", "import ensurepip, pip"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return probe.returncode == 0
+
+
+def bind_host() -> str:
+    return "127.0.0.1" if os.name == "nt" else "0.0.0.0"
+
+
+def public_url(port: int) -> str:
+    if os.name == "nt":
+        return f"http://127.0.0.1:{port}"
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        ip = sock.getsockname()[0]
+        sock.close()
+    except OSError:
+        ip = "IP_СЕРВЕРА"
+    return f"http://{ip}:{port}"
+
+
+def ensure_venv() -> Path:
+    if VENV.exists() and not venv_ready():
+        print("Виртуальное окружение битое — удаляю и создаю заново")
+        shutil.rmtree(VENV, ignore_errors=True)
+
+    if not VENV.exists():
+        print("Создаю виртуальное окружение...")
+        code = run([sys.executable, "-m", "venv", str(VENV)], check=False)
+        if code != 0 or not venv_ready():
+            if os.name == "nt":
+                die("Не удалось создать venv. Переустанови Python с галкой pip/venv.")
+            print("python3-venv не установлен — ставлю пакет")
+            shutil.rmtree(VENV, ignore_errors=True)
+            install_apt_packages(["python3-venv", "python3-pip"])
+            run([sys.executable, "-m", "venv", str(VENV)])
+
+    py = venv_python()
+    if not py.is_file():
+        die(f"не найден интерпретатор venv: {py}")
+    return py
+
+
+def ensure_node() -> tuple[str, str]:
+    node = shutil.which("node")
+    npm = shutil.which("npm")
+    if node and npm:
+        return node, npm
+    if os.name == "nt":
+        die("Нужен Node.js (с npm): https://nodejs.org")
+    print("Node.js не найден — ставлю nodejs и npm")
+    install_apt_packages(["nodejs", "npm"])
+    node = shutil.which("node")
+    npm = shutil.which("npm")
+    if not node or not npm:
+        die("Не удалось поставить Node.js. Установи: apt-get install -y nodejs npm")
+    return node, npm
 
 
 def read_env_value(key: str) -> str:
@@ -75,11 +176,12 @@ def read_env_value(key: str) -> str:
     return ""
 
 
-def write_env(username: str, password: str) -> None:
+def write_env(username: str, password: str, host: str, port: int) -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     db_path = (DATA / "bot.db").as_posix()
     secret = secrets.token_hex(32)
     encryption = secrets.token_urlsafe(32)
+    panel = public_url(port)
     text = f"""POSTGRES_USER=botuser
 POSTGRES_PASSWORD={secrets.token_hex(16)}
 POSTGRES_DB=botdb
@@ -96,24 +198,24 @@ ADMIN_PASSWORD={password}
 DOMAIN=localhost
 ACME_EMAIL=admin@example.com
 
-CORS_ORIGINS=http://127.0.0.1:8000,http://localhost:8000,http://localhost:5173,http://localhost:8080
-HOST=127.0.0.1
-PORT=8000
+CORS_ORIGINS=http://127.0.0.1:{port},http://localhost:{port},{panel}
+HOST={host}
+PORT={port}
 """
     (ROOT / ".env").write_text(text, encoding="utf-8", newline="\n")
     CREDENTIALS.write_text(
-        f"url=http://127.0.0.1:8000\nusername={username}\npassword={password}\n",
+        f"url={panel}\nusername={username}\npassword={password}\n",
         encoding="utf-8",
         newline="\n",
     )
 
 
-def print_access(username: str, password: str, created: bool) -> None:
+def print_access(username: str, password: str, created: bool, panel: str) -> None:
     print()
     print("=" * 46)
     print("  NEO PANEL // УСТАНОВКА ЗАВЕРШЕНА")
     print("=" * 46)
-    print("Админ-панель:  http://127.0.0.1:8000")
+    print(f"Админ-панель:  {panel}")
     print(f"Логин:         {username}")
     print(f"Пароль:        {password}")
     print("=" * 46)
@@ -124,7 +226,10 @@ def print_access(username: str, password: str, created: bool) -> None:
     else:
         print("Файл .env уже был. Если пароль меняли в админке —")
         print("входите новыми данными, а не этими.")
-    print("Повторный запуск:  python run.py")
+    if os.name != "nt":
+        print("Если страница не открывается снаружи — открой порт 8000")
+        print("в файрволе панели VPS.")
+    print("Повторный запуск:  python3 run.py")
     print("=" * 46)
 
 
@@ -137,22 +242,16 @@ def main() -> None:
     if sys.version_info < (3, 10):
         die("Нужен Python 3.10 или новее")
 
-    node = shutil.which("node")
-    npm = shutil.which("npm")
-    if not node or not npm:
-        die("Нужен Node.js (с npm): https://nodejs.org")
+    host = bind_host()
+    port = 8000
+    panel = public_url(port)
 
+    node, npm = ensure_node()
     print("Python:", sys.version.split()[0])
     run([node, "-v"])
     run([npm, "-v"])
 
-    if not VENV.exists():
-        print("Создаю виртуальное окружение...")
-        run([sys.executable, "-m", "venv", str(VENV)])
-
-    py = venv_python()
-    if not py.is_file():
-        die(f"не найден интерпретатор venv: {py}")
+    py = ensure_venv()
 
     run([str(py), "-m", "pip", "install", "--upgrade", "pip"])
     run([str(py), "-m", "pip", "install", "-r", str(BACKEND / "requirements.txt")])
@@ -175,14 +274,19 @@ def main() -> None:
     if created:
         username = read_env_value("ADMIN_USERNAME") or "admin"
         password = secrets.token_urlsafe(12)
-        write_env(username, password)
+        write_env(username, password, host, port)
         print(".env создан (логин и пароль сгенерированы)")
     else:
         username = read_env_value("ADMIN_USERNAME") or "admin"
         password = read_env_value("ADMIN_PASSWORD") or "(см. .env / админку)"
         print(".env уже есть — пароль не перезаписываю")
+        host = read_env_value("HOST") or host
+        port_raw = read_env_value("PORT")
+        if port_raw.isdigit():
+            port = int(port_raw)
+        panel = public_url(port)
 
-    print_access(username, password, created)
+    print_access(username, password, created, panel)
 
     if args.no_start:
         return
@@ -199,9 +303,9 @@ def main() -> None:
                 "--app-dir",
                 str(BACKEND),
                 "--host",
-                "127.0.0.1",
+                host,
                 "--port",
-                "8000",
+                str(port),
             ]
         )
     )

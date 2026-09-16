@@ -3,9 +3,14 @@
 Telegram-бот с ИИ, лимитом бесплатных запросов, платными тарифами
 и веб-админкой.
 
-## Установка одной командой
+## Установка одной командой (VPS Ubuntu/Debian)
 
-Нужны **Git**, **Python 3.10+** и **Node.js** (с npm).
+```
+curl -fsSL https://raw.githubusercontent.com/samson693000-creator/neo-panel/main/setup.sh | bash
+```
+
+Скрипт сам поставит Git, Python, venv, Node.js, скачает проект и запустит установку.
+В конце выведет ссылку на админку, логин и пароль.
 
 Windows (PowerShell):
 
@@ -13,10 +18,21 @@ Windows (PowerShell):
 git clone https://github.com/samson693000-creator/neo-panel.git; cd neo-panel; python install.py
 ```
 
-Linux / macOS:
+Linux / macOS / VPS:
 
 ```
 git clone https://github.com/samson693000-creator/neo-panel.git && cd neo-panel && python3 install.py
+```
+
+На Ubuntu/Debian установщик сам поставит `python3-venv` и `nodejs`, если их нет.
+
+Если старый запуск уже упал на venv — удали битую папку и повтори:
+
+```
+cd ~/neo-panel
+git pull
+rm -rf .venv
+python3 install.py
 ```
 
 После установки в консоли будут ссылка на админ-панель, логин и пароль.
