@@ -71,4 +71,5 @@ fi
 if command -v ufw >/dev/null 2>&1; then
   need_root ufw allow 8000/tcp || true
 fi
-python3 install.py
+python3 install.py --no-start
+bash deploy/install-service.sh

@@ -111,6 +111,21 @@ def venv_ready() -> bool:
     return probe.returncode == 0
 
 
+def systemd_available() -> bool:
+    return (
+        os.name != "nt"
+        and shutil.which("systemctl") is not None
+        and Path("/run/systemd/system").exists()
+    )
+
+
+def install_systemd_service(py: Path, host: str, port: int) -> None:
+    script = ROOT / "deploy" / "install-service.sh"
+    if not script.is_file():
+        die("нет deploy/install-service.sh")
+    run(["bash", str(script)])
+
+
 def bind_host() -> str:
     return "127.0.0.1" if os.name == "nt" else "0.0.0.0"
 
@@ -279,7 +294,8 @@ def print_access(username: str, password: str, created: bool, panel: str) -> Non
     if os.name != "nt":
         print("Если страница не открывается снаружи — открой порт 8000")
         print("в файрволе панели VPS.")
-    print("Повторный запуск:  python3 run.py")
+    print("Повторный запуск в консоли:  python3 run.py")
+    print("Фон (после закрытия PuTTY):  bash deploy/install-service.sh")
     print("=" * 46)
 
 
@@ -287,6 +303,11 @@ def main() -> None:
     _utf8_stdio()
     parser = argparse.ArgumentParser(description="Установка NEO PANEL")
     parser.add_argument("--no-start", action="store_true", help="только поставить, не запускать сервер")
+    parser.add_argument(
+        "--foreground",
+        action="store_true",
+        help="запустить в этой консоли, а не через systemd",
+    )
     args = parser.parse_args()
 
     if sys.version_info < (3, 10):
@@ -343,7 +364,13 @@ def main() -> None:
     if args.no_start:
         return
 
-    print("Запускаю сервер. Остановка: Ctrl+C")
+    if systemd_available() and not args.foreground:
+        print("Ставлю systemd-сервис, чтобы панель жила после закрытия PuTTY...")
+        install_systemd_service(py, host, port)
+        print(f"Готово. Админка: {panel}")
+        return
+
+    print("Запускаю сервер в этой консоли. Остановка: Ctrl+C")
     os.chdir(ROOT)
     raise SystemExit(
         subprocess.call(
