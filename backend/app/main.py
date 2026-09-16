@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+import asyncio
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +24,7 @@ from app.api import (
 from app.bot.runner import bot_manager
 from app.core.config import settings
 from app.core.security import hash_password
+from app.db.migrate import patch_schema
 from app.db.session import SessionLocal, engine
 from app.models.models import Admin, Base, Tariff
 from app.services.settings_service import SettingsService
@@ -36,6 +38,7 @@ DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await patch_schema(engine)
 
 
 async def seed() -> None:
@@ -95,7 +98,21 @@ async def lifespan(app: FastAPI):
         auto = await SettingsService(session).get_bool("bot_enabled", False)
     if auto:
         await bot_manager.start()
+
+    async def yoomoney_loop() -> None:
+        from app.services.payments.yoomoney import poll_pending_yoomoney
+
+        await asyncio.sleep(8)
+        while True:
+            try:
+                await poll_pending_yoomoney()
+            except Exception:
+                logger.exception("YooMoney poller")
+            await asyncio.sleep(45)
+
+    poller = asyncio.create_task(yoomoney_loop())
     yield
+    poller.cancel()
     await bot_manager.stop()
     await engine.dispose()
 

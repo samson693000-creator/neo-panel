@@ -84,6 +84,30 @@ export default function SettingsPage() {
     }
   };
 
+  const yoomoneyAction = async (path: string) => {
+    setBusy(true);
+    try {
+      const res = await api.post<{
+        ok?: boolean;
+        message?: string;
+        payment_url?: string;
+        order_id?: string;
+        account?: string;
+        activated?: number;
+      }>(`/api/payments/yoomoney/${path}`);
+      const extra = res.payment_url
+        ? ` Заказ ${res.order_id || ""}`
+        : res.account
+          ? ` Счёт ${res.account}`
+          : "";
+      toast((res.message || "Готово") + extra, res.ok === false ? "err" : "ok");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Ошибка", "err");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (!data) return <Spinner />;
 
   const secretHint = (key: string) =>
@@ -338,8 +362,155 @@ export default function SettingsPage() {
             <Toggle
               checked={bool("payments_test_mode")}
               onChange={(v) => set("payments_test_mode", String(v))}
-              label="Тестовый режим платежей"
+              label="Тестовый режим криптоплатежей"
             />
+          </div>
+        </Card>
+      )}
+
+      {tab === "payments" && (
+        <Card title="ЮMoney">
+          <div className="space-y-4">
+            <Toggle
+              checked={bool("yoomoney_enabled")}
+              onChange={(v) => set("yoomoney_enabled", String(v))}
+              label="Включить ЮMoney"
+            />
+            <Field
+              label="Номер кошелька"
+              hint="куда приходят переводы, например 41001…"
+            >
+              <input
+                className="input"
+                value={values.yoomoney_wallet ?? ""}
+                onChange={(e) => set("yoomoney_wallet", e.target.value)}
+                placeholder="410011234567890"
+              />
+            </Field>
+            <Field
+              label="OAuth-токен"
+              hint={secretHint("yoomoney_oauth_token")}
+            >
+              <input
+                className="input"
+                type="password"
+                autoComplete="new-password"
+                value={values.yoomoney_oauth_token ?? ""}
+                onChange={(e) => set("yoomoney_oauth_token", e.target.value)}
+                placeholder="значение не показывается"
+              />
+            </Field>
+            <Field
+              label="Секрет HTTP-уведомлений"
+              hint={secretHint("yoomoney_notification_secret")}
+            >
+              <input
+                className="input"
+                type="password"
+                autoComplete="new-password"
+                value={values.yoomoney_notification_secret ?? ""}
+                onChange={(e) =>
+                  set("yoomoney_notification_secret", e.target.value)
+                }
+                placeholder="из настроек уведомлений ЮMoney"
+              />
+            </Field>
+            <Field
+              label="URL уведомлений"
+              hint="вставь этот адрес в кабинете ЮMoney"
+            >
+              <input
+                className="input"
+                readOnly
+                value={
+                  (values.public_url || "").replace(/\/$/, "")
+                    ? `${(values.public_url || "").replace(/\/$/, "")}/api/payments/yoomoney/webhook`
+                    : "Сначала укажи публичный адрес панели выше"
+                }
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Процент комиссии" hint="например 2 или 3">
+                <input
+                  className="input"
+                  value={values.yoomoney_commission_percent ?? "3"}
+                  onChange={(e) =>
+                    set("yoomoney_commission_percent", e.target.value)
+                  }
+                />
+              </Field>
+              <Field label="Фикс. комиссия, ₽">
+                <input
+                  className="input"
+                  value={values.yoomoney_commission_fixed ?? "0"}
+                  onChange={(e) =>
+                    set("yoomoney_commission_fixed", e.target.value)
+                  }
+                />
+              </Field>
+              <Field label="Комиссию платит">
+                <select
+                  className="input"
+                  value={values.yoomoney_commission_payer ?? "client"}
+                  onChange={(e) =>
+                    set("yoomoney_commission_payer", e.target.value)
+                  }
+                >
+                  <option value="client">Клиент</option>
+                  <option value="seller">Продавец</option>
+                </select>
+              </Field>
+            </div>
+            <Field
+              label="Тип перевода"
+              hint="AC — карта, PC — кошелёк ЮMoney"
+            >
+              <select
+                className="input"
+                value={values.yoomoney_payment_type ?? "AC"}
+                onChange={(e) => set("yoomoney_payment_type", e.target.value)}
+              >
+                <option value="AC">Банковская карта (AC)</option>
+                <option value="PC">Кошелёк ЮMoney (PC)</option>
+              </select>
+            </Field>
+            <p className="text-[11px] text-matrix-dim">
+              Если комиссию платит клиент, к оплате = (цена + фикс) / (1 −
+              процент/100), округление вверх до копейки. Пример: 50 ₽ и 2% →
+              51.03 ₽, чтобы на кошелёк пришло не меньше 50 ₽. Для ЮMoney цена
+              тарифа берётся как рубли.
+            </p>
+            <Toggle
+              checked={bool("yoomoney_test_mode")}
+              onChange={(v) => set("yoomoney_test_mode", String(v))}
+              label="Тестовый режим ЮMoney"
+            />
+            <div className="flex flex-wrap gap-2 border-t border-matrix-border pt-4">
+              <button className="btn-primary" onClick={save} disabled={busy}>
+                Сохранить настройки
+              </button>
+              <button
+                className="btn-ghost"
+                disabled={busy}
+                onClick={() => yoomoneyAction("test")}
+              >
+                Проверить подключение
+              </button>
+              <button
+                className="btn-ghost"
+                disabled={busy}
+                onClick={() => yoomoneyAction("test-invoice")}
+              >
+                Создать тестовый платёж
+              </button>
+              <button
+                className="btn-ghost"
+                disabled={busy}
+                onClick={() => yoomoneyAction("sync")}
+              >
+                Проверить ожидающие платежи
+              </button>
+            </div>
           </div>
         </Card>
       )}

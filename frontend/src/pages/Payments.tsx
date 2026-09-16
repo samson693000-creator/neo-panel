@@ -8,6 +8,7 @@ const FILTERS = [
   { key: "paid", label: "Оплачены" },
   { key: "expired", label: "Истекли" },
   { key: "cancelled", label: "Отменены" },
+  { key: "failed", label: "Ошибки" },
 ];
 
 const STATUS_CLASS: Record<string, string> = {
@@ -63,7 +64,7 @@ export default function PaymentsPage() {
       <div>
         <h1 className="text-lg tracking-[0.2em] text-matrix-green">ПЛАТЕЖИ</h1>
         <p className="mt-1 text-xs text-matrix-dim">
-          счета USDT и BTC, автоактивация тарифов
+          счета USDT, BTC и ЮMoney, автоактивация тарифов
         </p>
       </div>
 
@@ -121,15 +122,22 @@ export default function PaymentsPage() {
                   <td>{p.username ? `@${p.username}` : p.telegram_id}</td>
                   <td>{p.tariff}</td>
                   <td className="whitespace-nowrap">
-                    {p.amount} {p.asset}
+                    {p.amount_gross
+                      ? `${p.amount_gross} ${p.asset}`
+                      : `${p.amount} ${p.asset}`}
                     {p.network && (
                       <span className="ml-1 text-[11px] text-matrix-dim">
                         {p.network}
                       </span>
                     )}
+                    {p.commission_amount ? (
+                      <div className="text-[10px] text-matrix-dim">
+                        комиссия {p.commission_amount}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="max-w-[160px] truncate text-matrix-dim">
-                    {p.invoice_id}
+                    {p.order_id || p.invoice_id}
                     <div className="text-[10px]">{p.provider}</div>
                   </td>
                   <td>

@@ -7,12 +7,14 @@ from aiogram.types import (
     Message,
 )
 from sqlalchemy import select
+import secrets
 
 from app.bot.handlers import get_or_create_user
 from app.db.session import SessionLocal
 from app.models.models import BotUser, Payment, Tariff
 from app.services.activation import activate_payment
 from app.services.payments import ProviderError, get_provider
+from app.services.payments.yoomoney import check_yoomoney_order, create_yoomoney_order
 from app.services.settings_service import SettingsService
 
 router = Router()
@@ -73,8 +75,18 @@ async def choose_asset(call: CallbackQuery) -> None:
             if a.strip()
         ]
         network = await svc.get("usdt_network", "TRC20")
+        yoomoney_on = await svc.get_bool("yoomoney_enabled", False)
 
     buttons = []
+    if yoomoney_on:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text="Оплатить ЮMoney",
+                    callback_data=f"pay:{tariff_id}:RUB",
+                )
+            ]
+        )
     for a in assets:
         suffix = f" ({network})" if a == "USDT" else ""
         buttons.append(
@@ -93,7 +105,7 @@ async def choose_asset(call: CallbackQuery) -> None:
         f"{tariff.description or ''}\n\n"
         f"Включено: {limit}\n"
         f"Стоимость: <b>{float(tariff.price):g} {tariff.currency}</b>\n\n"
-        "Выбери валюту оплаты:",
+        "Выбери способ оплаты:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
     )
     await call.answer()
@@ -124,6 +136,57 @@ async def create_invoice(call: CallbackQuery) -> None:
         test_mode = await svc.get_bool("payments_test_mode", True)
         support = await svc.get("support_url")
 
+        if asset == "RUB":
+            try:
+                payment = await create_yoomoney_order(
+                    session, user=user, tariff=tariff
+                )
+            except ProviderError as exc:
+                extra = f"\n\nПоддержка: {support}" if support else ""
+                await call.message.answer(
+                    f"Не удалось создать счёт ЮMoney.\n<i>{exc}</i>{extra}"
+                )
+                await call.answer()
+                return
+            ym_test = await svc.get_bool("yoomoney_test_mode", False)
+            buttons = []
+            if payment.pay_url:
+                buttons.append(
+                    [InlineKeyboardButton(text="Оплатить ЮMoney", url=payment.pay_url)]
+                )
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text="Проверить оплату",
+                        callback_data=f"check:{payment.id}",
+                    )
+                ]
+            )
+            lines = [
+                "<b>Счёт ЮMoney создан</b>",
+                "",
+                f"Тариф: <b>{tariff.name}</b>",
+                f"К оплате: <b>{float(payment.amount_gross):.2f} ₽</b>",
+                f"На кошелёк (после комиссии): <b>{float(payment.amount_net):.2f} ₽</b>",
+                f"Заказ: <code>{payment.order_id}</code>",
+                "",
+            ]
+            if ym_test:
+                lines.append(
+                    "Тестовый режим ЮMoney: тестовые уведомления не выдают тариф."
+                )
+            else:
+                lines.append(
+                    "Оплати по ссылке. Затем нажми «Проверить оплату» — "
+                    "тариф включится после подтверждения ЮMoney."
+                )
+            await call.message.edit_text(
+                "\n".join(lines),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+            )
+            await call.answer()
+            return
+
         try:
             provider = await get_provider(session)
             invoice = await provider.create_invoice(
@@ -145,7 +208,11 @@ async def create_invoice(call: CallbackQuery) -> None:
             tariff_id=tariff.id,
             provider=provider.name,
             invoice_id=invoice.invoice_id,
+            order_id=(invoice.invoice_id or f"cp{secrets.token_hex(10)}")[:64],
             amount=invoice.amount,
+            amount_net=invoice.amount,
+            amount_gross=invoice.amount,
+            commission_amount=0,
             currency=tariff.currency,
             asset=invoice.asset,
             network=invoice.network,
@@ -205,6 +272,26 @@ async def check_payment(call: CallbackQuery) -> None:
 
         if payment.status == "paid":
             await call.answer("Оплата уже зачислена", show_alert=True)
+            return
+
+        if payment.provider == "yoomoney":
+            try:
+                result = await check_yoomoney_order(
+                    session, payment.order_id, notify=False
+                )
+            except ProviderError as exc:
+                await call.answer(f"Ошибка проверки: {exc}"[:190], show_alert=True)
+                return
+            if result.get("status") == "paid":
+                await call.message.edit_text(
+                    "<b>Оплата подтверждена. Доступ к тарифу активирован.</b>"
+                )
+                await call.answer("Готово")
+                return
+            await call.answer(
+                result.get("message") or "Оплата пока не найдена",
+                show_alert=True,
+            )
             return
 
         try:

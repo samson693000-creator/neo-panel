@@ -19,6 +19,7 @@ async def activate_payment(
 
     payment.status = "paid"
     payment.paid_at = now
+    payment.processed_at = now
 
     granted = ""
     if user is not None and tariff is not None:
@@ -48,11 +49,18 @@ async def activate_payment(
 
     if notify and user is not None:
         name = tariff.name if tariff else "начисление"
-        await notify_user(
-            user.telegram_id,
-            "<b>Оплата получена</b>\n\n"
-            f"Тариф: <b>{name}</b>\n"
-            f"Начислено: {granted or 'доступ обновлён'}\n\n"
-            "Можешь продолжать — просто напиши свой вопрос.",
-        )
+        if payment.provider == "yoomoney":
+            text = (
+                "<b>Оплата подтверждена. Доступ к тарифу активирован.</b>\n\n"
+                f"Тариф: <b>{name}</b>\n"
+                f"Начислено: {granted or 'доступ обновлён'}"
+            )
+        else:
+            text = (
+                "<b>Оплата получена</b>\n\n"
+                f"Тариф: <b>{name}</b>\n"
+                f"Начислено: {granted or 'доступ обновлён'}\n\n"
+                "Можешь продолжать — просто напиши свой вопрос."
+            )
+        await notify_user(user.telegram_id, text)
     return True

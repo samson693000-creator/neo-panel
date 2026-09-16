@@ -11,6 +11,8 @@ SECRET_KEYS = {
     "cryptomus_api_key",
     "cryptomus_merchant_id",
     "webhook_secret",
+    "yoomoney_oauth_token",
+    "yoomoney_notification_secret",
 }
 
 DEFAULTS: dict[str, str] = {
@@ -48,6 +50,15 @@ DEFAULTS: dict[str, str] = {
     "usdt_network": "TRC20",
     "enabled_assets": "USDT,BTC",
     "public_url": "",
+    "yoomoney_enabled": "false",
+    "yoomoney_wallet": "",
+    "yoomoney_oauth_token": "",
+    "yoomoney_notification_secret": "",
+    "yoomoney_commission_percent": "3",
+    "yoomoney_commission_fixed": "0",
+    "yoomoney_commission_payer": "client",
+    "yoomoney_test_mode": "false",
+    "yoomoney_payment_type": "AC",
 }
 
 class SettingsService:

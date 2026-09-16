@@ -52,7 +52,9 @@ async def dashboard(
         bot_username=bot_manager.state()["username"],
         ai_configured=bool(await svc.get("ai_api_key")),
         payments_configured=bool(
-            await svc.get("cryptopay_token") or await svc.get("cryptomus_api_key")
+            await svc.get("cryptopay_token")
+            or await svc.get("cryptomus_api_key")
+            or await svc.get_bool("yoomoney_enabled", False)
         ),
     )
 

@@ -175,7 +175,11 @@ export interface PaymentRow {
   tariff: string;
   provider: string;
   invoice_id: string;
+  order_id?: string;
   amount: number;
+  amount_net?: number;
+  amount_gross?: number;
+  commission_amount?: number;
   asset: string;
   network: string;
   status: string;

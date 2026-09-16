@@ -9,6 +9,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -91,23 +92,36 @@ class AiRequest(Base):
 
 class Payment(Base):
     __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint("order_id", name="uq_payments_order_id"),
+        UniqueConstraint(
+            "yoomoney_operation_id", name="uq_payments_yoomoney_operation_id"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("bot_users.id", ondelete="CASCADE"))
     tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"))
     provider: Mapped[str] = mapped_column(String(32), default="test")
     invoice_id: Mapped[str] = mapped_column(String(128), index=True, default="")
+    order_id: Mapped[str] = mapped_column(String(64), default="")
     amount: Mapped[float] = mapped_column(Numeric(18, 8), default=0)
+    amount_net: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    amount_gross: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    commission_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     currency: Mapped[str] = mapped_column(String(16), default="USDT")
     asset: Mapped[str] = mapped_column(String(16), default="USDT")
     network: Mapped[str] = mapped_column(String(16), default="")
     pay_url: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    yoomoney_operation_id: Mapped[str | None] = mapped_column(String(64))
     raw: Mapped[str] = mapped_column(Text, default="")
+    failure_reason: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 class Setting(Base):
     __tablename__ = "settings"

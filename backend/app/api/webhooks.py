@@ -87,3 +87,10 @@ async def cryptomus_webhook(
         await session.commit()
 
     return {"ok": True}
+
+
+@router.post("/yoomoney")
+async def yoomoney_webhook_alias(request: Request, session: AsyncSession = Depends(get_session)) -> dict:
+    from app.api.payments import yoomoney_webhook
+
+    return await yoomoney_webhook(request, session)
