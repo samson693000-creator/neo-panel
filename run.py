@@ -23,17 +23,48 @@ def _read_env(key: str, default: str) -> str:
     return os.environ.get(key, default)
 
 
-def _panel_url(host: str, port: str) -> str:
-    if host in {"127.0.0.1", "localhost"}:
-        return f"http://127.0.0.1:{port}"
+def _detect_ipv4() -> str:
+    found: list[str] = []
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2)
         sock.connect(("8.8.8.8", 80))
-        ip = sock.getsockname()[0]
+        found.append(sock.getsockname()[0])
         sock.close()
-        return f"http://{ip}:{port}"
     except OSError:
-        return f"http://{host}:{port}"
+        pass
+    try:
+        out = subprocess.check_output(
+            ["hostname", "-I"], text=True, encoding="utf-8", errors="replace", timeout=3
+        )
+        found.extend(out.split())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        try:
+            import urllib.request
+
+            with urllib.request.urlopen(url, timeout=4) as resp:
+                found.append(resp.read().decode("utf-8", errors="replace").strip())
+            break
+        except OSError:
+            continue
+    for ip in found:
+        if (
+            ip
+            and ip.count(".") == 3
+            and not ip.startswith("127.")
+            and not ip.startswith("0.")
+        ):
+            return ip
+    return ""
+
+
+def _panel_url(port: str) -> str:
+    if os.name == "nt":
+        return f"http://127.0.0.1:{port}"
+    ip = _detect_ipv4()
+    return f"http://{ip or 'IP_СЕРВЕРА'}:{port}"
 
 
 def main() -> None:
@@ -48,10 +79,10 @@ def main() -> None:
         print("Сначала выполни: python3 install.py")
         raise SystemExit(1)
 
-    host = _read_env("HOST", "127.0.0.1" if os.name == "nt" else "0.0.0.0")
+    host = "127.0.0.1" if os.name == "nt" else "0.0.0.0"
     port = _read_env("PORT", "8000")
     os.chdir(ROOT)
-    print("Админ-панель:", _panel_url(host, port))
+    print("Админ-панель:", _panel_url(port))
     print("Остановка: Ctrl+C")
     raise SystemExit(
         subprocess.call(

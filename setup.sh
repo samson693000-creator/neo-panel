@@ -65,4 +65,10 @@ fi
 
 cd "$DIR"
 rm -rf .venv
+if [ -f .env ]; then
+  sed -i 's/^HOST=127.0.0.1/HOST=0.0.0.0/' .env
+fi
+if command -v ufw >/dev/null 2>&1; then
+  need_root ufw allow 8000/tcp || true
+fi
 python3 install.py

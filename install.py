@@ -115,17 +115,67 @@ def bind_host() -> str:
     return "127.0.0.1" if os.name == "nt" else "0.0.0.0"
 
 
+def detect_ipv4() -> str:
+    found: list[str] = []
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2)
+        sock.connect(("8.8.8.8", 80))
+        found.append(sock.getsockname()[0])
+        sock.close()
+    except OSError:
+        pass
+    try:
+        out = subprocess.check_output(
+            ["hostname", "-I"], text=True, encoding="utf-8", errors="replace", timeout=3
+        )
+        found.extend(out.split())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        try:
+            import urllib.request
+
+            with urllib.request.urlopen(url, timeout=4) as resp:
+                found.append(resp.read().decode("utf-8", errors="replace").strip())
+            break
+        except OSError:
+            continue
+    for ip in found:
+        if (
+            ip
+            and ip.count(".") == 3
+            and not ip.startswith("127.")
+            and not ip.startswith("0.")
+        ):
+            return ip
+    return ""
+
+
 def public_url(port: int) -> str:
     if os.name == "nt":
         return f"http://127.0.0.1:{port}"
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect(("8.8.8.8", 80))
-        ip = sock.getsockname()[0]
-        sock.close()
-    except OSError:
-        ip = "IP_СЕРВЕРА"
-    return f"http://{ip}:{port}"
+    ip = detect_ipv4()
+    return f"http://{ip or 'IP_СЕРВЕРА'}:{port}"
+
+
+def patch_env_listen(host: str, port: int) -> None:
+    env_file = ROOT / ".env"
+    if not env_file.is_file():
+        return
+    lines = []
+    has_host = False
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        if line.startswith("HOST="):
+            lines.append(f"HOST={host}")
+            has_host = True
+        elif line.startswith("PORT="):
+            lines.append(f"PORT={port}")
+        else:
+            lines.append(line)
+    if not has_host:
+        lines.append(f"HOST={host}")
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def ensure_venv() -> Path:
@@ -280,11 +330,13 @@ def main() -> None:
         username = read_env_value("ADMIN_USERNAME") or "admin"
         password = read_env_value("ADMIN_PASSWORD") or "(см. .env / админку)"
         print(".env уже есть — пароль не перезаписываю")
-        host = read_env_value("HOST") or host
         port_raw = read_env_value("PORT")
         if port_raw.isdigit():
             port = int(port_raw)
-        panel = public_url(port)
+        host = bind_host()
+        patch_env_listen(host, port)
+        print(f"Сервер будет слушать {host}:{port}")
+    panel = public_url(port)
 
     print_access(username, password, created, panel)
 
